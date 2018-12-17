@@ -1,50 +1,60 @@
 #include <SoftwareSerial.h>
 #include <PMsensor.h>
-//#include <Servo.h>
-#include <Wire.h>
+#include <Servo.h>
 #define sensitivity 0.1
-#define SLAVE 4
 
 SoftwareSerial mySerial(8, 9); //블루투스의 Tx, Rx핀을 2번 3번핀으로 설정
 PMsensor PM;
-//Servo vent;
 
-short sensorPin = A0;
-short sensorLED = 3;
+Servo win1, win2;
 
+short sensorPin = A0, sensorLED = 3;
+int rain_INPUT = 5, rain_DIGIT_INPUT = 13, cds = 6;
+int rainVal, cdsVal;
+boolean blsRaining = false;
+String isRain, printStr = "";
 float out = 0.0f, in = 0.0f;
-char sendMessage;
 
 void setup() {
-  Wire.begin(SLAVE);
+  win1.attach(10); win2.attach(11);
+  win1.write(0); win2.write(180);
   PM.init(sensorPin, sensorLED);
-  //vent.attach(11);
   Serial.begin(9600);
   mySerial.begin(9600);
-  //Serial.println("Hello World! I'm Slave");
-  //vent.write(0);
-  Wire.onRequest(sendToMaster);
-  pinMode(13, OUTPUT);
+  pinMode(rain_DIGIT_INPUT, INPUT);
 }
 void sensing();
+void servo(int s, int e, boolean FLAG);
 void loop() {
-  sendMessage = ' ';
   if (mySerial.available()) {
-    sensing();
-    Serial.print(out = (float) mySerial.parseInt() / (float) 100);
-    Serial.print(",");
-    Serial.println(in);
-    if (out - in > 0 && out - in < 15) {
-      sendMessage = 'C'; // 밖의 값이 더 크고 15 이상의 차이라면, 'C'(Close) 문자 보내기
-      digitalWrite(13, LOW); // 추후에 모터로 수정
-    }
-    else if (in - out > 0 && in - out < 15) {
-      sendMessage = 'O'; // 안의 값이 더 크고 15 이상의 차이라면, 'O'(Open) 문자 보내기
-      digitalWrite(13, HIGH); // 추후에 모터로 수정
+    rainVal = analogRead(rain_INPUT);
+    cdsVal = analogRead(cds);
+    blsRaining = !(digitalRead(rain_DIGIT_INPUT));
+    sensing(); out = (float) mySerial.parseInt() / 100;
+    printStr = String(out) + ',' + String(in) + ',' + String(isRain) + ',' + String(rainVal) + ',' + String(cdsVal) + '\n';
+    Serial.print(printStr);
+    if(blsRaining){
+      isRain = "Yes";
+      Serial.print("C,");
+      servo(180, 0, false);
+    } else {
+      isRain = "NO";
+      if (in - out > 0 && in - out >= 15) { // 안의 값이 밖보다 크면 창문 열기
+        servo(0, 180, true);
+        Serial.print("O,");
+        digitalWrite(13, LOW); // 추후에 모터로 수정
+      }
+      else if (out - in > 0 && out - in >= 15) { // 밖의 값이 안보다 크면 창문 닫기
+        servo(180, 0, false);
+        Serial.print("C,");
+        digitalWrite(13, HIGH); // 추후에 모터로 수정
+      }
+      else {
+        Serial.print("W,");  
+      }
     }
   }
 }
-//Qoskld;fj
 void sensing() {
   int err = PMsensorErrSuccess;
   if ((err = PM.read(&in, true, sensitivity)) != PMsensorErrSuccess) {
@@ -54,8 +64,15 @@ void sensing() {
     return;
   }
 }
-
-void sendToMaster() {
-  if (sendMessage == ' ') Wire.write('W'); // 만약에 바뀐 사항이 없다면, 'W'(Wait) 문자 보내기
-  else Wire.write(sendMessage);
+void servo(int s, int e, boolean FLAG){
+  if(FLAG)
+    for(int i = s; i < e; i++){
+        win1.write(i); // 왼쪽
+        win2.write(180 - i); // 오른쪽
+    }
+  else
+    for(int i = s; i > e; i--){
+      win1.write(i); // 왼쪽
+      win2.write(180 - i); // 오른쪽  
+    }
 }
